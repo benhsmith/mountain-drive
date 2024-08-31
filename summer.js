@@ -10,16 +10,21 @@ dq_image.src = "Dairy_Queen_logo.svg";
 var moose_image = new Image();
 moose_image.src = "moose.png";
 
+var tree_images = make_tree_images()
 
 var car_x = 0;
 var car_y = 0;
 var car_speed = 0;
 var car_moving_ticks = 0;
-var car_crashed = false;
 var car_jump_height = 11;
 var car_jump = 0;
 var car_jumping = false;
 var car_jump_speed = 15;
+var car_crashed = false;
+
+// true - landscape is moving higher
+// false - landscape is moving lower
+var ascending = true;
 
 var moose_x = 0;
 var moose_time;
@@ -28,54 +33,17 @@ var spedometer = document.getElementById("speed");
 var points_box = document.getElementById("points");
 var points = 0;
 
-// Tree images
-var tree_images = make_tree_images()
 
-var road_end_y = canvas.height - 10;
+var road_end_y;
+
+// Frame's road
 var frame_road = []
-var frame_road_y;
 
-function new_screen()
-{
-	car_x = 0;
-	frame_road = [];
-	frame_road_y = road_end_y;
-	//5 seconds
-	moose_time = 50;
-	points_box.textContent = points;
-}
+// y position of road beginning and end in current frame
+var road_begin_y;
+var road_end_y;
 
-function resize_image(an_image, height)
-{
-	var ratio = an_image.width / an_image.height;
-	an_image.height = height;
-	an_image.width = height * ratio;
-}
-
-function draw_car(x, y)
-{
-	ctx.drawImage(car_image, x, y - car_image.height, car_image.width, car_image.height);
-}
-
-function draw_dq(x, y)
-{
-	ctx.drawImage(dq_image, x, y - 50, 50, 25);
-}
-
-function draw_moose(x, y)
-{
-	if (moose_time > 0)
-	{
-		ctx.drawImage(moose_image, x, y - moose_image.height, moose_image.width, moose_image.height);
-		moose_time--;
-	}
-}
-
-function random_number(min, max) {
-  var diff = max - min;
-  return max - Math.round(Math.random() * diff);
-}
-
+// Create the various tree Image objects
 function make_tree_images()
 {
 	var tree_files = ["tree1.png", "tree2.png", "tree3.png", null]
@@ -93,20 +61,110 @@ function make_tree_images()
 	return tree_images;
 }
 
+// Initialize variables for a new frame.
+// Every time the car leaves the right side of the screen
+// a new frame is generated and the car wraps around to
+// re-enter from the left.
+function new_frame()
+{
+	// Switch road direction if too high
+	if (ascending && road_end_y < canvas.height / 3)
+	{
+		ascending = false;
+	}
+	else if (!ascending && road_end_y > canvas.height * 3/4)
+	{
+		ascending = true;
+	}
+
+	// Generate a new road
+	frame_road = make_road()
+	
+	// Move the car to the left side of the screen
+	car_x = 0;
+	
+	// Set the new road's beginning y to the old road's ending y
+	road_begin_y = road_end_y;
+	
+	// How long until the moose disappears in ticks: 5 seconds
+	moose_time = 50;
+	points_box.textContent = points;
+}
+
+// Draw the car
+function draw_car(x, y)
+{
+	ctx.drawImage(car_image, x, y - car_image.height, car_image.width, car_image.height);
+}
+
+// Draw DQ
+function draw_dq(x, y)
+{
+	ctx.drawImage(dq_image, x, y - 50, 50, 25);
+}
+
+// Draw the moose
+function draw_moose(x, y)
+{
+	if (moose_time > 0)
+	{
+		ctx.drawImage(moose_image, x, y - moose_image.height, moose_image.width, moose_image.height);
+		moose_time--;
+	}
+}
+
+// Draw a road segment
+function draw_road(x, y, road_segment)
+{
+	var x_end = x + road_segment[0];
+	var y_end = y + road_segment[1];
+	
+	if (road_segment[2])
+	{
+		// Draw tree
+		ctx.drawImage(road_segment[2], x, y - 160, 70, 150);
+	}
+	
+	ctx.beginPath();
+
+	ctx.moveTo(x, y+5);
+	ctx.lineTo(x_end, y_end+5);
+	ctx.lineTo(x_end, y_end-5);	
+	ctx.lineTo(x, y-5);	
+	ctx.fill();
+
+	ctx.closePath();
+	
+	for (let i=0; i <= 4; i++) {
+		ctx.beginPath();
+		ctx.lineWidth = 2;
+		ctx.strokeStyle = "rgb(255,255,255)";
+		ctx.moveTo(x + (length / 4) * i, y);
+		ctx.lineTo(x + (length / 4) * i + 10, y);
+		ctx.stroke();
+		ctx.closePath();
+	}	
+	
+	if (road_segment[3])
+	{
+		moose_x = x;
+		
+		draw_moose(moose_x, y + 5);		
+	}
+	
+	return [x_end, y_end];
+}
+
+// Update entities positions and render the screen
 function animate()
 {	
 	// Clear the canvas
 	ctx.clearRect(0, 0, canvas.width, canvas.height);
 	
-	if (frame_road.length == 0)
-	{
-		frame_road = make_road()
-	}
-
 	var road_segments = []
 
 	var road_x = 0;
-	var road_y = frame_road_y;
+	var road_y = road_begin_y;
 	var car_road_y = 0;
 	
 	for (let i=0; i < frame_road.length; i++)
@@ -132,6 +190,7 @@ function animate()
 	draw_car(car_x, car_y);
 }
 
+// Generate all the road segments for a frame
 function make_road()
 {
 	var road = []
@@ -148,20 +207,12 @@ function make_road()
 	return road;
 }
 
-var climbing = true;
+// Generate a road segment
 function next_road_segment()
 {	
 	var height;
-	if (climbing && frame_road_y < canvas.height / 3)
-	{
-		climbing = false;
-	}
-	else if (!climbing && frame_road_y > canvas.height * 3/4)
-	{
-		climbing = true;
-	}
 		
-	if (climbing)
+	if (ascending)
 	{
 		height = random_number(2,-10);
 	}
@@ -226,55 +277,11 @@ function move_car(road_y)
 		if (car_x > canvas.width)
 		{
 			points += 100;
-			new_screen();
+			new_frame();
 		}
 	}	
 }
 
-function draw_road(x, y, road_segment)
-{
-	var x_end = x + road_segment[0];
-	var y_end = y + road_segment[1];
-	
-	if (road_segment[2])
-	{
-		// Draw tree
-		ctx.drawImage(road_segment[2], x, y - 160, 70, 150);
-	}
-	
-	ctx.beginPath();
-
-	//ctx.lineWidth = 2;
-	//ctx.strokeStyle = "rgb(211,211,211)";
-	//ctx.fillStyle = "rgb(211,211,211)";
-	ctx.moveTo(x, y+5);
-	ctx.lineTo(x_end, y_end+5);
-	ctx.lineTo(x_end, y_end-5);	
-	ctx.lineTo(x, y-5);	
-	//ctx.stroke();
-	ctx.fill();
-
-	ctx.closePath();
-	
-	for (let i=0; i <= 4; i++) {
-		ctx.beginPath();
-		ctx.lineWidth = 2;
-		ctx.strokeStyle = "rgb(255,255,255)";
-		ctx.moveTo(x + (length / 4) * i, y);
-		ctx.lineTo(x + (length / 4) * i + 10, y);
-		ctx.stroke();
-		ctx.closePath();
-	}	
-	
-	if (road_segment[3])
-	{
-		moose_x = x;
-		
-		draw_moose(moose_x, y + 5);		
-	}
-	
-	return [x_end, y_end];
-}
 
 var lastKeyDown = new Date().getTime();
 
@@ -319,7 +326,7 @@ window.addEventListener("load", (event) => {
 	canvas.width = window.innerWidth - 1;
 	canvas.height = window.innerHeight - 10;
 	road_end_y = canvas.height - 10;	
-	new_screen();
+	new_frame();
 });
 
 setInterval(animate, 100);
